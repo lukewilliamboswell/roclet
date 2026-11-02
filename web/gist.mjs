@@ -19,6 +19,23 @@ export function gistReference(value) {
   throw new Error('Enter a GitHub Gist URL or Gist ID, optionally with a revision in the URL.');
 }
 
+// Draft metadata is untrusted too: build external links only from validated IDs.
+export function gistSourceURL(source) {
+  if (!source || typeof source.id !== 'string' || !hex.test(source.id)
+      || (source.revision != null && !/^[a-f0-9]{40}$/i.test(source.revision))) return null;
+  return `https://gist.github.com/${source.id}${source.revision ? `/${source.revision}` : ''}`;
+}
+
+// Share the public source, never a localhost address or a browser-only draft ID.
+export function gistNotebookURL(source) {
+  const gist = gistSourceURL(source);
+  if (!gist) return null;
+  const url = new URL('https://ageron.github.io/roclet/web/edit.html');
+  url.searchParams.set('gist', gist);
+  if (typeof source.filename === 'string') url.searchParams.set('gistFile', source.filename);
+  return url.href;
+}
+
 // Bound the response before JSON parsing, including metadata and escaped text.
 async function gistJSON(response) {
   const reader = response.body.getReader(), chunks = [];
@@ -74,6 +91,9 @@ export async function loadGist(value, {filename, fetch:request = globalThis.fetc
   const blobs = data.map(file => ({path:file.path, blob:new Blob([file.source], {type:'text/plain;charset=utf-8'}), sha256:'0'.repeat(64)}));
   attachments(blobs, record.files);
   record.attachments = await Promise.all(blobs.map(file => attachment(file.path, file.blob)));
+  const version = revision ?? gist.history?.[0]?.version;
+  record.gistSource = {id, filename:main.path,
+    revision:typeof version === 'string' && /^[a-f0-9]{40}$/i.test(version) ? version : null};
   record.autoRun = false;
   return record;
 }

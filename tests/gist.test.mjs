@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {gistReference, loadGist} from '../web/gist.mjs';
+import {gistReference, loadGist, gistSourceURL, gistNotebookURL} from '../web/gist.mjs';
 import {validDraft, requestFor} from '../web/edit-model.mjs';
 
 const id = 'abc123def456';
@@ -20,6 +20,7 @@ test('Gist imports carry modules and text attachments into independent paused dr
   const record = await load(files);
   assert.equal(validDraft(record), true);
   assert.equal(record.autoRun, false);
+  assert.deepEqual(record.gistSource, {id, revision:null, filename:'notebook.roc'});
   assert.equal(record.source, files['notebook.roc']);
   assert.deepEqual(record.files, [{path:'Geometry.roc', source:files['Geometry.roc']}]);
   assert.equal(await record.attachments[0].blob.text(), files['sales.csv']);
@@ -51,4 +52,26 @@ test('Gist failures reject incomplete imports and invalid project paths', async 
   await assert.rejects(load({'notebook.roc':'hello','../data.txt':'bad'}), /relative project path/);
   await assert.rejects(load({'notebook.roc':'hello','Main.roc':'bad'}), /reserved/);
   await assert.rejects(load({'notebook.roc':'é'.repeat(128 * 1024 + 1)}), /256 KiB/);
+});
+
+
+test('Gist provenance pins the loaded version and builds only safe external links', async () => {
+  const record = await loadGist(id, {fetch:async()=>new Response(JSON.stringify({
+    history:[{version:revision}], files:{'notebook.md':{content:'# Notebook'}},
+  }))});
+  assert.deepEqual(record.gistSource, {id, revision, filename:'notebook.md'});
+  assert.equal(gistSourceURL(structuredClone(record).gistSource), `https://gist.github.com/${id}/${revision}`);
+  assert.equal(gistSourceURL({id}), `https://gist.github.com/${id}`);
+  for (const source of [null, {}, {id:'javascript:alert(1)'}, {id,revision:'../bad'}]) assert.equal(gistSourceURL(source), null);
+});
+
+
+test('Gist notebook links use the public editor and the original selected file', () => {
+  const url = new URL(gistNotebookURL({id, revision, filename:'My notes.md'}));
+  assert.equal(url.origin, 'https://ageron.github.io');
+  assert.equal(url.pathname, '/roclet/web/edit.html');
+  assert.equal(url.searchParams.get('gist'), `https://gist.github.com/${id}/${revision}`);
+  assert.equal(url.searchParams.get('gistFile'), 'My notes.md');
+  assert.equal(url.searchParams.has('notebook'), false);
+  assert.equal(gistNotebookURL(null), null);
 });

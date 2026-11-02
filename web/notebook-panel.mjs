@@ -1,3 +1,4 @@
+import {gistSourceURL, gistNotebookURL} from './gist.mjs';
 import { localFiles } from './local-files.mjs';
 import { Notebook, makeCell, cellsFrom } from './edit-model.mjs';
 import { CellEditor, editorFor } from './cell-editor.mjs';
@@ -534,6 +535,16 @@ export class NotebookPanel {
     function reflect(reason) {
       if (!notebook?.state) return;
       const s = notebook.state;
+      const gistURL = gistSourceURL(s.gistSource);
+      part('gist-origin').hidden = !gistURL;
+      if (gistURL) {
+        part('gist-source').href = gistURL;
+        part('gist-source').textContent = gistURL;
+        part('gist-copy-info').textContent = `${s.gistSource.filename} · Editable browser copy. The shared link opens the original Gist; your edits stay in this browser.`;
+        const sources = s.files?.length ?? 0, data = s.attachments?.length ?? 0;
+        part('gist-project-files').textContent = `Project files (${sources})`;
+        part('gist-attachments').textContent = `Attachments (${data})`;
+      }
       if (part('title').value !== s.title) part('title').value = s.title;
       part('auto').checked = s.autoRun;
       // Run and Stop swap in one slot while the current operation is active,
@@ -600,6 +611,14 @@ export class NotebookPanel {
         }
       });
     });
+    part('gist-copy-link').onclick = () => perform(async () => {
+      const url = gistNotebookURL(notebook.state.gistSource);
+      if (!url) return;
+      try { await navigator.clipboard.writeText(url); notice('Copied a public Roclet link to the original Gist. Your browser edits are not included.'); }
+      catch { notice(`Copy this public Roclet link to the original Gist: ${url}`); }
+    });
+    part('gist-project-files').onclick = () => { onActivate(panel); $('project-files').click(); };
+    part('gist-attachments').onclick = () => { onActivate(panel); $('attachments').click(); };
     part('title').oninput = () => notebook.change(s => { s.title = part('title').value; }, {group:'title',source:notebook.state.sourceCurrent,reason:'edit'});
     part('run').onclick = () => perform(() => notebook.run()); part('stop').onclick = () => notebook.stop();
     part('auto').onchange = () => notebook.setAuto(part('auto').checked);

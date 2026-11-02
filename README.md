@@ -93,7 +93,10 @@ filenames; use a local project or Roclet bundle for directory trees or binary da
 To pin a version, set `gist` to a full Gist revision URL (URL-encode it when
 building a link). Otherwise Roclet loads the latest version each time the link
 is opened. Each import creates an independent browser draft and waits for
-**Run**. Edits stay in your browser; download a copy or bundle to keep or share
+**Run**. A source panel keeps the Gist address visible, opens **Project files**
+and **Attachments**, and offers **Copy Roclet link** to share the original pinned
+Gist through the public Roclet site, including when you are working on localhost.
+Edits stay in your browser; download a copy or bundle to keep or share
 them. Saving back to GitHub is not supported.
 
 Loading needs an internet connection and is subject to GitHub's unauthenticated
