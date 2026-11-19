@@ -1,17 +1,16 @@
 app [] {
-    parser: "https://github.com/lukewilliamboswell/roc-parser/releases/download/3.0.0/6xsRdRqenJrAb4wG7HaST4Xh349vD5sHAJDsKTK6E3dr.tar.zst",
+    parser: "https://github.com/lukewilliamboswell/roc-parser/releases/download/6.0.0-rc.5/822J9njyNR1vgyX1KG4ck496dBx3AnLfvn2zHXn15Ksw.tar.zst",
 }
 
 # %% id=number
-import parser.Utf8
-out_number = Utf8.parse_str(Utf8.digits, "12345")
+out_number = U64.from_str("12345")
 
 # %% id=names
 import parser.CSV
 
 Planet : { name : Str, moons : U64 }
-decode : Str -> Try(List(Planet), [InvalidCsv(CSV.Error), MissingRequiredField(Str)])
-decode = |input| CSV.parse(input)
+decode : Str -> Try(List(Planet), [InvalidCsv(CSV.Error)])
+decode = |input| CSV.decode_str(input, {})
 
 planets = decode("name,moons\nEarth,1\nMars,2\n")
 out_names = planets.map_ok(|rows| rows.map(|row| row.name))

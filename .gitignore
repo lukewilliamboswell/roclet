@@ -17,3 +17,7 @@ artifacts/
 
 # CI compiled engine cache
 .engine-cache/
+
+# Signals homepage build
+/site/.signals/
+/site/dist/

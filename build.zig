@@ -51,6 +51,11 @@ pub fn build(b: *std.Build) void {
     });
     publish.has_side_effects = true;
     const ready = &publish.step;
+
+    const site = b.addSystemCommand(&.{ b.graph.zig_exe, "run", "tools/build-tool.zig", "--", "site", root });
+    site.addFileArg(roc.namedLazyPath("roclet-roc"));
+    site.has_side_effects = true;
+    b.step("site", "Build the prerendered Signals homepage").dependOn(&site.step);
     b.step("adapter", "Build native and browser compiler workspace engines").dependOn(ready);
     const launcher = b.addExecutable(.{ .name = "roclet", .root_module = b.createModule(.{
         .root_source_file = b.path("tools/cli.zig"),
@@ -101,6 +106,7 @@ pub fn build(b: *std.Build) void {
     const offline = b.addRunArtifact(packager);
     offline.addArg(root);
     offline.step.dependOn(ready);
+    offline.step.dependOn(&site.step);
     offline.has_side_effects = true;
     b.getInstallStep().dependOn(&offline.step);
     const package = b.addRunArtifact(packager);

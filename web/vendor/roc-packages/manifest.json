@@ -62,6 +62,16 @@
       "dependencies": []
     },
     {
+      "package": "lukewilliamboswell/plume",
+      "version": "0.6.0",
+      "url": "https://github.com/lukewilliamboswell/plume/releases/download/0.6.0/CQJyEgus7V9Wsoh8JHi5mbHXubm7woVbqFhCYLrd8sch.tar.zst",
+      "file": "archives/CQJyEgus7V9Wsoh8JHi5mbHXubm7woVbqFhCYLrd8sch.tar.zst",
+      "bytes": 39878,
+      "sha256": "a06a80858e5135ca930383902631c14e41d3a4476ee9ff81af2405450065bd52",
+      "licenseFile": "licenses/lukewilliamboswell-plume-0.6.0.txt",
+      "dependencies": []
+    },
+    {
       "package": "lukewilliamboswell/roc-graph-layout",
       "version": "0.2.0",
       "url": "https://github.com/lukewilliamboswell/roc-graph-layout/releases/download/0.2.0/7xtfva8cSwNKfzonPwh2nLurdwkcYLwbTD6iAKkMhjNs.tar.zst",
@@ -105,6 +115,18 @@
       "licenseFile": "licenses/lukewilliamboswell-roc-parser-4.0.0.txt",
       "dependencies": [
         "https://github.com/roc-lang/unicode/releases/download/4.3.0/7HGaK8HUHMs5judroSmUoS4TjPGZ1kAjPTyPDSCWiSKM.tar.zst"
+      ]
+    },
+    {
+      "package": "lukewilliamboswell/roc-parser",
+      "version": "6.0.0-rc.5",
+      "url": "https://github.com/lukewilliamboswell/roc-parser/releases/download/6.0.0-rc.5/822J9njyNR1vgyX1KG4ck496dBx3AnLfvn2zHXn15Ksw.tar.zst",
+      "file": "archives/822J9njyNR1vgyX1KG4ck496dBx3AnLfvn2zHXn15Ksw.tar.zst",
+      "bytes": 646430,
+      "sha256": "7ed3ffb964ad567ac1ec7e12a2a4378d1a8897f5d3e79cdf64eca063fd18863a",
+      "licenseFile": "licenses/lukewilliamboswell-roc-parser-6.0.0-rc.5.txt",
+      "dependencies": [
+        "https://github.com/roc-lang/unicode/releases/download/4.3.3/AJfFMmhvmbgn7THAF1E1sofC3dZaVWPFmVV7GH8Bc7k7.tar.zst"
       ]
     },
     {
@@ -175,6 +197,16 @@
       "bytes": 227831,
       "sha256": "119846d77be7e87cff22396219a8d060833c4ee2c3b7e54ba94dc2fb7a37d168",
       "licenseFile": "licenses/roc-lang-unicode-4.3.1.txt",
+      "dependencies": []
+    },
+    {
+      "package": "roc-lang/unicode",
+      "version": "4.3.3",
+      "url": "https://github.com/roc-lang/unicode/releases/download/4.3.3/AJfFMmhvmbgn7THAF1E1sofC3dZaVWPFmVV7GH8Bc7k7.tar.zst",
+      "file": "archives/AJfFMmhvmbgn7THAF1E1sofC3dZaVWPFmVV7GH8Bc7k7.tar.zst",
+      "bytes": 227927,
+      "sha256": "e4bdde8dea6abe4952844c37b77cb01adc2df8d8e5f6f1b6d8b091329e27dcab",
+      "licenseFile": "licenses/roc-lang-unicode-4.3.3.txt",
       "dependencies": []
     }
   ]

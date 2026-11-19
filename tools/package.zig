@@ -87,6 +87,24 @@ fn archive(gpa: std.mem.Allocator, files: []const File) ![]const u8 {
     try out.writer.writeAll(&end);
     return out.toOwnedSlice();
 }
+/// The Signals build publishes one complete, content-addressed asset set.
+fn siteAssets(gpa: std.mem.Allocator, io: std.Io, root: []const u8, paths: *std.ArrayList([]const u8)) !void {
+    const assets_dir = try std.fs.path.join(gpa, &.{ root, "site/dist/assets" });
+    var dir = try cwd.openDir(io, assets_dir, .{ .iterate = true });
+    defer dir.close(io);
+    var entries = dir.iterate();
+    const entry = (try entries.next(io)) orelse return error.MissingSignalsAssets;
+    if (entry.kind != .directory or entry.name.len != 16) return error.InvalidSignalsAssets;
+    for (entry.name) |byte| if (!(std.ascii.isDigit(byte) or (byte >= 'a' and byte <= 'f'))) return error.InvalidSignalsAssets;
+    const hash_dir = try gpa.dupe(u8, entry.name);
+    if (try entries.next(io) != null) return error.InvalidSignalsAssets;
+
+    try paths.append(gpa, "index.html");
+    for ([_][]const u8{ "app.wasm", "environment.mjs", "runtime.mjs", "startup.mjs", "worker.mjs", "LICENSE" }) |name| {
+        try paths.append(gpa, try std.fmt.allocPrint(gpa, "assets/{s}/{s}", .{ hash_dir, name }));
+    }
+}
+
 pub fn main(init: std.process.Init) !void {
     const a = init.arena.allocator();
     const io = init.io;
@@ -95,11 +113,11 @@ pub fn main(init: std.process.Init) !void {
     const root = args[1];
     try write(a, io, root, "web/vendor/md4c.LICENSE.md", try read(a, io, root, "vendor/md4c/LICENSE.md"));
     var paths: std.ArrayList([]const u8) = .empty;
+    try siteAssets(a, io, root, &paths);
     for ([_][]const u8{
-        "index.html",
         "install.sh",
         "install.ps1",
-        "web/home.mjs",
+        "web/home-ports.mjs",
         "web/open-notebook.mjs",
         "web/gist.mjs",
         "web/install.html",
@@ -205,7 +223,9 @@ pub fn main(init: std.process.Init) !void {
     var assets: std.ArrayList(Asset) = .empty;
     var files: std.ArrayList(File) = .empty;
     for (paths.items) |path| {
-        const data = try read(a, io, root, path);
+        const generated = std.mem.eql(u8, path, "index.html") or std.mem.startsWith(u8, path, "assets/");
+        const source = if (generated) try std.fs.path.join(a, &.{ "site/dist", path }) else path;
+        const data = try read(a, io, root, source);
         try files.append(a, .{ .path = path, .data = data });
         try assets.append(a, .{ .path = if (std.mem.startsWith(u8, path, "web/")) path[4..] else try std.mem.concat(a, u8, &.{ "../", path }), .bytes = data.len, .sha256 = try hash(a, data) });
     }

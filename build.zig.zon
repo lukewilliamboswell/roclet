@@ -2,7 +2,7 @@
     .name = .roclet,
     .version = "0.1.0",
     .fingerprint = 0xcbf6ad9bf702c248,
-    .minimum_zig_version = "0.17.0",
+    .minimum_zig_version = "0.17.1",
     .dependencies = .{ .roc = .{ .path = ".toolchain/roc" } },
     .paths = .{ "" },
 }

@@ -1,8 +1,29 @@
+diff --git a/build.zig b/build.zig
+index f2cf998..a9a2a91 100755
+--- a/build.zig
++++ b/build.zig
+@@ -2845,6 +2845,7 @@ pub fn build(b: *std.Build) void {
+     }
+     roc_exe.root_module.addImport("compiler_version", compiler_version_module);
+     const fixture_roc = executableRuntimePath(b, roc_exe, strip_macho_exports_tool);
++    b.addNamedLazyPath("roclet-roc", fixture_roc);
+     const fixture_options = b.addOptions();
+     // Zig resolves this path against the build runner's directory. Tests run
+     // in prepared fixture roots, so they also need the absolute build root.
+@@ -7234,7 +7235,7 @@ fn addStaticBinaryenOptionsToModule(mod: *std.Build.Module) void {
+         .search_strategy = .mode_first,
+     };
+     mod.addCSourceFile(.{
+-        .file = .{ .cwd_relative = "src/build/zig_binaryen.cpp" },
++        .file = mod.owner.path("src/build/zig_binaryen.cpp"),
+         .flags = &exe_cflags,
+     });
+     mod.linkSystemLibrary("binaryen", link_static);
 diff --git a/design.md b/design.md
-index 28e6606..99849db 100644
+index 0e0a832..28f77ec 100644
 --- a/design.md
 +++ b/design.md
-@@ -2431,6 +2431,13 @@ when no lexical import exists.
+@@ -2270,6 +2270,13 @@ behaves in any module.
  
  ### Compile-Time Evaluation And Static Storage
  
@@ -16,7 +37,7 @@ index 28e6606..99849db 100644
  Frontend task completion and checked-value completion are distinct boundaries.
  The frontend prepares immutable checked types, bodies, binding identities, and
  selected root requests before evaluating those roots. Importers may consume
-@@ -2707,6 +2714,18 @@ the continuation reads, so target LIR lowering selects run/omit per consumer
+@@ -2770,6 +2777,18 @@ the continuation reads, so target LIR lowering selects run/omit per consumer
  without any merge. Checked loop mutation and state merge plans likewise
  never look inside expect bodies, so both expect modes read the same plans.
  
@@ -35,7 +56,7 @@ index 28e6606..99849db 100644
  Compile-time evaluation is a function of the checked program alone. Every
  command that finalizes checking specializes the same roots, every checked
  module's compile-time requests plus the platform entrypoints of the
-@@ -3998,6 +4017,12 @@ capacity, while `release_excess_capacity` rebuilds for the live item count.
+@@ -3609,6 +3628,12 @@ capacity, while `release_excess_capacity` rebuilds for the live item count.
  
  ## Source Parsing Boundary
  
@@ -49,61 +70,63 @@ index 28e6606..99849db 100644
  the parser, and the parser walks that token buffer directly. The parser does not
  use recursive grammar functions, and it does not keep source substrings as an
 diff --git a/src/compile/cache_manager.zig b/src/compile/cache_manager.zig
-index 779b12f..8c44ddb 100644
+index f5f68af..45a8b81 100644
 --- a/src/compile/cache_manager.zig
 +++ b/src/compile/cache_manager.zig
-@@ -19,6 +19,10 @@ const artifacts = @import("artifact_store.zig");
+@@ -21,6 +21,9 @@ const artifacts = @import("artifact_store.zig");
  /// Public `CacheManager` declaration.
  pub const CacheManager = struct {
      config: CacheConfig,
-+    /// Embeddings may supply atomic byte storage through CoreCtx. They own
-+    /// persistence and eviction; compiler keys and payload validation stay here.
-+    /// Ordinary compiler invocations retain the native artifact catalog.
++    /// Embeddings supply atomic byte storage through CoreCtx. Compiler keys
++    /// and payload validation are shared with native storage.
 +    storage: enum { native, core_ctx } = .native,
      roc_ctx: CoreCtx = undefined,
      allocator: Allocator,
      stats: CacheStats,
-@@ -123,6 +127,27 @@ pub const CacheManager = struct {
+@@ -155,6 +158,27 @@ pub const CacheManager = struct {
          return .{ .allocator = allocator, .io = self.roc_ctx.std_io, .root = try std.fs.path.join(allocator, &.{ root, artifacts.format_directory }) };
      }
  
 +    fn coreCtxPath(self: *const Self, allocator: Allocator, family: artifacts.Family, key: [32]u8, scope: []const u8) ![]u8 {
 +        const directory = try self.config.getVersionCacheDir(allocator);
 +        defer allocator.free(directory);
-+        const indexed = identity(family, key, scope).indexedKey();
-+        return std.fmt.allocPrint(allocator, "{s}/embedded/{s}.bin", .{ directory, std.fmt.bytesToHex(indexed, .lower) });
++        const id = identity(family, key, scope);
++        return std.fmt.allocPrint(allocator, "{s}/embedded/{s}-{s}-{s}.bin", .{
++            directory, @tagName(family), std.fmt.bytesToHex(id.group, .lower), std.fmt.bytesToHex(id.key, .lower),
++        });
 +    }
 +
-+    fn loadCoreCtx(self: *Self, allocator: Allocator, kind: Kind, family: artifacts.Family, key: [32]u8, scope: []const u8, counted: bool) ?[]u8 {
++    fn loadCoreCtx(self: *Self, allocator: Allocator, kind: Kind, family: artifacts.Family, key: [32]u8, scope: []const u8) ?[]u8 {
 +        const path = self.coreCtxPath(allocator, family, key, scope) catch {
-+            if (counted) self.recordMissFor(kind);
++            self.recordMissFor(kind);
 +            return null;
 +        };
 +        defer allocator.free(path);
-+        const bytes = self.roc_ctx.readFile(path, allocator) catch {
-+            if (counted) self.recordMissFor(kind);
++        return self.roc_ctx.readFile(path, allocator) catch {
++            self.recordMissFor(kind);
 +            return null;
 +        };
-+        if (counted) self.recordHitFor(kind, bytes.len);
-+        return bytes;
 +    }
 +
      fn familyFor(kind: Kind) artifacts.Family {
          return switch (kind) {
-             .checked, .inference => .checked,
-@@ -153,8 +178,25 @@ pub const CacheManager = struct {
-     const EntrySource = union(enum) { bytes: []const u8, stream: CoreCtx.FileStream };
+             .checked => .checked,
+@@ -208,8 +232,28 @@ pub const CacheManager = struct {
+     };
  
      fn storeEntry(self: *Self, allocator: Allocator, kind: Kind, family: artifacts.Family, key: [32]u8, source: EntrySource, size: usize, scope: []const u8, name: []const u8) void {
 -        if (comptime threading.is_freestanding) return;
          if (!self.config.enabled) return;
++        const framed: FramedEntry = .{ .prefix = artifacts.lengthPrefix(size), .source = source, .trailer = artifacts.lengthTrailer(size) };
 +        if (self.storage == .core_ctx) {
 +            const path = self.coreCtxPath(allocator, family, key, scope) catch {
 +                self.recordStoreFailureFor(kind);
 +                return;
 +            };
 +            defer allocator.free(path);
-+            const result = switch (source) {
++            const result = if (family.framed())
++                self.roc_ctx.writeFileStream(path, .{ .context = &framed, .write = FramedEntry.write })
++            else switch (source) {
 +                .bytes => |bytes| self.roc_ctx.writeFile(path, bytes),
 +                .stream => |stream| self.roc_ctx.writeFileStream(path, stream),
 +            };
@@ -115,113 +138,68 @@ index 779b12f..8c44ddb 100644
 +            return;
 +        }
 +        if (comptime threading.is_freestanding) return;
-         var store = self.openStore(allocator) catch {
+         const store = self.storeHandle() orelse {
              self.recordStoreFailureFor(kind);
              return;
-@@ -191,15 +233,31 @@ pub const CacheManager = struct {
-         self.recordStoreFor(kind, size);
-     }
- 
--    pub const StagedPart = struct {
--        store: *artifacts.Store,
--        stage: artifacts.Staging,
--        len: usize,
-+    pub const StagedPart = union(enum) {
-+        native: struct { store: *artifacts.Store, stage: artifacts.Staging, len: usize },
-+        core_ctx: []u8,
-     };
- 
-     pub fn stageCheckedPart(self: *Self, key: [32]u8, stream: CoreCtx.FileStream, size: usize, scope: []const u8, name: []const u8) ?StagedPart {
+@@ -220,7 +264,6 @@ pub const CacheManager = struct {
+             return;
+         };
+         defer stage.deinit();
+-        const framed: FramedEntry = .{ .prefix = artifacts.lengthPrefix(size), .source = source, .trailer = artifacts.lengthTrailer(size) };
+         const result = if (family.framed())
+             self.roc_ctx.writeFileStream(stage.path, .{ .context = &framed, .write = FramedEntry.write })
+         else switch (source) {
+@@ -270,8 +313,14 @@ pub const CacheManager = struct {
+     /// discarded and missed.
+     pub fn loadFamilyBytes(self: *Self, family: artifacts.Family, key: [32]u8, scope: []const u8) ?LoadedBytes {
+         std.debug.assert(family.framed());
 -        if (comptime threading.is_freestanding) return null;
          if (!self.config.enabled) return null;
 +        if (self.storage == .core_ctx) {
-+            var writer = std.Io.Writer.Allocating.init(self.allocator);
-+            defer writer.deinit();
-+            stream.write(stream.context, &writer.writer) catch {
-+                self.recordStoreFailure();
-+                return null;
-+            };
-+            if (writer.written().len != size) {
-+                self.recordStoreFailure();
-+                return null;
-+            }
-+            const bytes = writer.toOwnedSlice() catch {
-+                self.recordStoreFailure();
-+                return null;
-+            };
-+            return .{ .core_ctx = bytes };
++            const data = self.loadFamilyMapped(self.allocator, .checked, family, key, scope) orelse return null;
++            defer data.deinit(self.allocator);
++            const bytes = self.allocator.dupe(u8, data.data()) catch return null;
++            return .{ .bytes = bytes, .stamp = data.stamp };
 +        }
 +        if (comptime threading.is_freestanding) return null;
-         const store = self.allocator.create(artifacts.Store) catch {
-             self.recordStoreFailure();
-             return null;
-@@ -226,10 +284,14 @@ pub const CacheManager = struct {
-             self.recordStoreFailure();
-             return null;
-         };
--        return .{ .store = store, .stage = stage, .len = size };
-+        return .{ .native = .{ .store = store, .stage = stage, .len = size } };
-     }
- 
--    pub fn readStagedPart(self: *Self, part: StagedPart, allocator: Allocator) ?[]u8 {
-+    pub fn readStagedPart(self: *Self, staged: StagedPart, allocator: Allocator) ?[]u8 {
-+        const part = switch (staged) {
-+            .core_ctx => |bytes| return allocator.dupe(u8, bytes) catch null,
-+            .native => |part| part,
-+        };
-         const bytes = self.roc_ctx.readFile(part.stage.path, allocator) catch {
-             self.recordStoreFailure();
-             return null;
-@@ -242,7 +304,11 @@ pub const CacheManager = struct {
-         return bytes;
-     }
- 
--    pub fn discardStagedPart(self: *Self, part: StagedPart) void {
-+    pub fn discardStagedPart(self: *Self, staged: StagedPart) void {
-+        const part = switch (staged) {
-+            .core_ctx => |bytes| return self.allocator.free(bytes),
-+            .native => |part| part,
-+        };
-         self.roc_ctx.deleteFile(part.stage.path) catch {};
-         var stage = part.stage;
-         stage.deinit();
-@@ -257,8 +323,9 @@ pub const CacheManager = struct {
-     }
- 
-     pub fn loadFamilyBytes(self: *Self, family: artifacts.Family, key: [32]u8, scope: []const u8) ?[]const u8 {
--        if (comptime threading.is_freestanding) return null;
-         if (!self.config.enabled) return null;
-+        if (self.storage == .core_ctx) return self.loadCoreCtx(self.allocator, .checked, family, key, scope, true);
-+        if (comptime threading.is_freestanding) return null;
-         var store = self.openStore(self.allocator) catch {
+         const store = self.storeHandle() orelse {
              self.recordMissFor(.checked);
              return null;
-@@ -285,8 +352,19 @@ pub const CacheManager = struct {
+@@ -330,6 +379,12 @@ pub const CacheManager = struct {
+     ) void {
+         self.recordInvalidationFor(kind);
+         self.verboseLog(self.allocator, "Discarding corrupt {s} cache entry {s}: " ++ reason ++ "\n", .{ @tagName(family), std.fmt.bytesToHex(key, .lower) } ++ args);
++        if (self.storage == .core_ctx) {
++            const path = self.coreCtxPath(self.allocator, family, key, scope) catch return;
++            defer self.allocator.free(path);
++            self.roc_ctx.deleteFile(path) catch {};
++            return;
++        }
+         if (comptime threading.is_freestanding) return;
+         const store = self.storeHandle() orelse return;
+         store.discard(identity(family, key, scope), stamp);
+@@ -407,8 +462,15 @@ pub const CacheManager = struct {
      }
  
-     fn loadMapped(self: *Self, allocator: Allocator, kind: Kind, family: artifacts.Family, key: [32]u8, scope: []const u8, counted: bool) ?CacheModule.CacheData {
+     fn mapFamily(self: *Self, allocator: Allocator, kind: Kind, family: artifacts.Family, key: [32]u8, scope: []const u8) ?CacheModule.CacheData {
 -        if (comptime threading.is_freestanding) return null;
          if (!self.config.enabled) return null;
 +        if (self.storage == .core_ctx) {
-+            const bytes = self.loadCoreCtx(allocator, kind, family, key, scope, false) orelse {
-+                if (counted) self.recordMissFor(kind);
-+                return null;
-+            };
++            const bytes = self.loadCoreCtx(allocator, kind, family, key, scope) orelse return null;
 +            defer allocator.free(bytes);
 +            const aligned = allocator.alignedAlloc(u8, CacheModule.SERIALIZATION_ALIGNMENT, bytes.len) catch return null;
 +            @memcpy(aligned, bytes);
-+            if (counted) self.recordHitFor(kind, bytes.len);
-+            return .{ .allocated = aligned };
++            return .{ .storage = .{ .allocated = aligned }, .stamp = .{ .inode = if (std.Io.File.INode == void) {} else 0, .size = bytes.len } };
 +        }
 +        if (comptime threading.is_freestanding) return null;
-         var store = self.openStore(allocator) catch {
-             if (counted) self.recordMissFor(kind);
+         const store = self.storeHandle() orelse {
+             self.recordMissFor(kind);
              return null;
 diff --git a/src/compile/compile_build.zig b/src/compile/compile_build.zig
-index dba4523..642404b 100644
+index 90ba5fb..0654dff 100644
 --- a/src/compile/compile_build.zig
 +++ b/src/compile/compile_build.zig
-@@ -42,6 +42,20 @@ pub const RuntimeLoweringConfig = struct {
+@@ -34,6 +34,20 @@ pub const RuntimeLoweringConfig = struct {
      include_internal_static_data: bool = false,
  };
  
@@ -242,7 +220,7 @@ index dba4523..642404b 100644
  /// The underlying system I/O type, derived from CoreCtx to avoid
  /// referencing the raw Zig I/O type directly (which is banned in core modules).
  const Report = reporting.Report;
-@@ -215,6 +229,9 @@ pub const PostCheckPublicationMode = enum {
+@@ -208,6 +222,9 @@ pub const PostCheckPublicationMode = enum {
  // This module is designed to be integrated at the compile layer to avoid base<->compile circular dependencies.
  /// Main workspace-level build orchestrator that coordinates multiple packages
  pub const BuildEnv = struct {
@@ -252,16 +230,16 @@ index dba4523..642404b 100644
      gpa: Allocator,
      mode: Mode,
      max_threads: usize,
-@@ -1092,6 +1109,8 @@ pub const BuildEnv = struct {
+@@ -979,6 +996,8 @@ pub const BuildEnv = struct {
          coord.debug_observer = self.debug_observer;
+         coord.boxy_program_observer = self.boxy_program_observer;
          coord.setDetailedLoweringTiming(self.detailed_lowering_timing);
-         coord.compile_time_object_cache = self.compile_time_object_cache;
 +        coord.compile_time_event_callback = self.compile_time_event_callback;
 +        coord.compile_time_root_event_callback = self.compile_time_root_event_callback;
-         if (self.detailed_monotype_diagnostics) coord.ctfe_timing.lowering.enableDetailedMonotypeBody();
-         self.coordinator = coord;
-     }
-@@ -1166,6 +1185,13 @@ pub const BuildEnv = struct {
+         coord.boxy_object_lowering = self.boxy_object_lowering;
+         if (self.detailed_monotype_diagnostics) {
+             coord.ctfe_timing.lowering.enableDetail();
+@@ -1013,6 +1032,13 @@ pub const BuildEnv = struct {
          return if (session.completed) |*completed| completed else null;
      }
  
@@ -275,11 +253,25 @@ index dba4523..642404b 100644
      /// Reuse compilation workers for post-check lowering after checking finishes.
      ///
      /// Embeddings without a coordinator retain sequential post-check lowering.
+@@ -1381,6 +1407,13 @@ pub const BuildEnv = struct {
+         try self.finishCheckedProgram();
+     }
+ 
++    /// Publish frontend reports for an embedding that stops after a failed
++    /// check, before evaluating any of the checked program.
++    pub fn publishFrontendReports(self: *BuildEnv) Allocator.Error!void {
++        try self.emitCoordinatorReports();
++        try self.emitDeterministic();
++    }
++
+     pub fn finishCheckedProgram(self: *BuildEnv) CompileDiscoveredError!void {
+         const coord = self.coordinator orelse
+             base.invariant("build env invariant violated: checked program finished before coordinator initialization", .{});
 diff --git a/src/compile/coordinator.zig b/src/compile/coordinator.zig
-index 337e891..3af5b03 100644
+index 8c916bd..7d07196 100644
 --- a/src/compile/coordinator.zig
 +++ b/src/compile/coordinator.zig
-@@ -1450,6 +1450,10 @@ test "dependency post-order of a deep dependency chain runs on a small stack" {
+@@ -2205,6 +2205,10 @@ const BoxyObjects = struct {
  
  /// Coordinator manages all compilation state and coordinates workers
  pub const Coordinator = struct {
@@ -290,16 +282,16 @@ index 337e891..3af5b03 100644
      gpa: Allocator,
      mode: Mode,
      max_threads: usize,
-@@ -3417,6 +3421,8 @@ pub const Coordinator = struct {
-         self.ctfe_reuse_stats.settled_discovery_roots += discovery_cache.hits;
-         if (eval.CompileTimeReuse.traceEnabled()) std.debug.print("ctfe-reuse settled test discovery: {d} roots\n", .{discovery_cache.hits});
+@@ -3986,6 +3990,8 @@ pub const Coordinator = struct {
+         // Explicit tests retain check-like validation of every initializer.
+         options.validate_every_comptime_root = explicit_runtime;
          options.discovery_roots = .{ .requests = discovery_requests.items, .source_modules = discovery_sources.items };
 +        options.module_event_callback = self.compile_time_event_callback;
 +        options.module_root_event_callback = self.compile_time_root_event_callback;
          options.defer_debug_replay = !replay_cached_debug;
-         if (self.completion_arena != null) options.completion_sink = .{ .context = self, .demand = captureDemand, .debug = captureDebug };
          options.debug_observer = self.debug_observer;
-@@ -3769,7 +3775,7 @@ pub const Coordinator = struct {
+         options.boxy_program_observer = self.boxy_program_observer;
+@@ -4491,7 +4497,7 @@ pub const Coordinator = struct {
                  );
                  defer rb.deinit();
                  for (state.problems.problems.items) |problem| {
@@ -308,7 +300,7 @@ index 337e891..3af5b03 100644
                  }
              }
              while (self.modules.pop()) |mod| {
-@@ -3788,7 +3794,7 @@ pub const Coordinator = struct {
+@@ -4510,7 +4516,7 @@ pub const Coordinator = struct {
                  );
                  defer rb.deinit();
                  for (state.problems.problems.items) |problem| {
@@ -317,7 +309,7 @@ index 337e891..3af5b03 100644
                  }
              }
          }
-@@ -3803,6 +3809,15 @@ pub const Coordinator = struct {
+@@ -4525,6 +4531,15 @@ pub const Coordinator = struct {
          }
      };
  
@@ -330,23 +322,39 @@ index 337e891..3af5b03 100644
 +        }
 +    }
 +
-     fn commitPreparedModule(self: *Coordinator, pkg: *const PackageState, mod: *ModuleState) CoordinatorError!void {
-         const state = mod.pending_evaluation.?;
-         const artifact = mod.checkedArtifact().?;
-@@ -3822,7 +3837,7 @@ pub const Coordinator = struct {
+     /// A finalized module's checked entry, written by a worker after commit.
+     const PendingStore = struct {
+         coordinator: *Coordinator,
+@@ -4597,8 +4612,9 @@ pub const Coordinator = struct {
+         );
          defer rb.deinit();
          const problems = state.problems.problems.items;
++        const prior_failures = self.evaluation_failures.errors;
          for (problems[state.reported_problem_count..]) |problem| {
 -            try mod.reports.append(self.gpa, try rb.build(problem));
 +            try self.appendEvaluationProblem(mod, &rb, problem);
          }
          if (artifact.hasUnboundPlatformRequirements()) {
              var diagnostics = try CheckedArtifact.EvaluationDiagnostics.fromStore(artifact.canonical_names.allocator, &state.problems);
+@@ -4621,7 +4637,12 @@ pub const Coordinator = struct {
+         const evaluation_reported = state.problems.problems.items.len != checking_count;
+         const reproducible = !state.problems.unreproducible_reports and
+             !(evaluation_reported and hasUnevaluatedRequestsUnderAnyStrategy(artifact));
+-        if (reproducible and evaluated_more and self.cacheEnabled()) {
++        // Embeddings distinguish failed checking from failed evaluation so
++        // independent runtime roots can still run. Re-evaluate an erroneous
++        // module on the next build to produce its typed failure provenance.
++        const cache_evaluation = self.cache_manager == null or self.cache_manager.?.storage != .core_ctx or
++            self.evaluation_failures.errors == prior_failures;
++        if (reproducible and evaluated_more and self.cacheEnabled() and cache_evaluation) {
+             const reports: check.CheckedReports = if (state.problems.problems.items.len == 0)
+                 .{}
+             else
 diff --git a/src/eval/compile_time_finalization.zig b/src/eval/compile_time_finalization.zig
-index ab1669f..f518a4a 100644
+index 0f4ab3b..01f0506 100644
 --- a/src/eval/compile_time_finalization.zig
 +++ b/src/eval/compile_time_finalization.zig
-@@ -59,6 +59,21 @@ pub const DebugObserver = struct {
+@@ -56,6 +56,21 @@ pub const DebugObserver = struct {
      observe: *const fn (*anyopaque, []const u8) Allocator.Error!void,
  };
  
@@ -365,21 +373,21 @@ index ab1669f..f518a4a 100644
 +    notify: *const fn (*anyopaque, ModuleRootEvent) void,
 +};
 +
- /// Where the compile-time evaluator splices object-cache entries from.
- pub const SpliceSource = backend.dev.SpliceSource;
- 
-@@ -119,6 +134,10 @@ pub const Options = struct {
-     stderr: ?StderrWriter = null,
+ /// Reads each `.boxy` compile-time program once it is lowered, before it
+ /// runs: instrumentation that measures the programs compile-time evaluation
+ /// builds. A program can be lowered on any thread of the post-check
+@@ -93,6 +108,10 @@ pub const Options = struct {
      event_callback: ?EventCallback = null,
      debug_observer: ?DebugObserver = null,
+     boxy_program_observer: ?BoxyProgramObserver = null,
 +    /// Observe every replayed module debug event, including observations
 +    /// restored from checked artifacts. The message is borrowed for the call.
 +    module_event_callback: ?EventCallback = null,
 +    module_root_event_callback: ?ModuleRootEventCallback = null,
      debug_events: ?*DebugEvents = null,
-     completion_sink: ?CompletionSink = null,
      /// Artifact copies store results independently; shared slots publish once.
-@@ -406,6 +425,7 @@ const DebugEvents = struct {
+     publish_shared_slots: bool = true,
+@@ -212,6 +231,7 @@ const DebugEvents = struct {
      const Event = struct {
          module: checked.ModuleId,
          root: checked.ComptimeRootId,
@@ -387,16 +395,16 @@ index ab1669f..f518a4a 100644
          sequence: usize,
          is_repl: bool,
          message: []const u8,
-@@ -431,7 +451,7 @@ const DebugEvents = struct {
-     fn appendEvent(self: *DebugEvents, module: checked.ModuleId, root: checked.CompileTimeRoot, message: []const u8, fresh: bool) Allocator.Error!void {
+@@ -240,7 +260,7 @@ const DebugEvents = struct {
          const owned = try self.allocator.dupe(u8, message);
          errdefer self.allocator.free(owned);
+         if (fresh) try self.fresh_roots.ensureUnusedCapacity(self.allocator, 1);
 -        try self.events.append(self.allocator, .{ .module = module, .root = root.id, .sequence = self.events.items.len, .is_repl = root.kind == .repl_expr, .message = owned, .fresh = fresh });
 +        try self.events.append(self.allocator, .{ .module = module, .root = root.id, .source = root.source, .sequence = self.events.items.len, .is_repl = root.kind == .repl_expr, .message = owned, .fresh = fresh });
+         if (fresh) self.fresh_roots.putAssumeCapacity(.{ .module = module.bytes, .root = root.id }, {});
      }
  
-     fn lessThan(_: void, a: Event, b: Event) bool {
-@@ -483,7 +503,16 @@ const DebugEvents = struct {
+@@ -312,7 +332,16 @@ const DebugEvents = struct {
  
      fn replay(self: *DebugEvents, options: Options) Allocator.Error!void {
          std.mem.sort(Event, self.events.items, {}, lessThan);
@@ -414,25 +422,34 @@ index ab1669f..f518a4a 100644
      }
  };
  
-@@ -3819,7 +3848,7 @@ fn evalInterpreterLiteralRoot(
-     if (options.literal_capture) |capture| {
-         if (failure != null or program.host.debugMessages().len != 0 or interpreter.getExpectFailures().len != 0) capture.observed(plan);
-     }
+@@ -1107,6 +1136,8 @@ pub fn finalizeProgram(
+         quiet_options.stderr = null;
+         quiet_options.debug_observer = null;
+         quiet_options.event_callback = null;
++        quiet_options.module_event_callback = null;
++        quiet_options.module_root_event_callback = null;
+         quiet_options.keep_artifacts = false;
+         quiet_options.unfinalized_reports = if (options.unfinalized_reports != null) quiet_unfinalized.reports() else null;
+         var quiet_events = DebugEvents{ .allocator = allocator };
+@@ -5683,7 +5714,7 @@ fn evalInterpreterLiteralRoot(
+     // A failure that read a member of its group not yet evaluated
+     // (`Options.retry`) leaves the root for the group to run again.
+     if (failure) |failed| if (options.retry) |retry| if (retry.holds(failed.meaning)) return false;
 -    for (program.host.debugMessages()) |message| try emitDebugMessage(allocator, options, false, message);
 +    for (program.host.debugMessages()) |message| try reportLiteralDebugMessage(allocator, owners, options, plan, message);
      for (interpreter.getExpectFailures()) |expect_failure| {
          try reportLiteralRootExpectFailure(owners, lowered, plan, expect_failure.message, expect_failure.region, expect_failure.loc);
      }
-@@ -3895,7 +3924,7 @@ fn evalDevLiteralRoot(
-         };
-     }
+@@ -5739,7 +5770,7 @@ fn evalDevLiteralRoot(
+     // (`Options.retry`) leaves the root for the group to run again.
+     if (failure) |failed| if (options.retry) |retry| if (retry.holds(failed.meaning)) return false;
      for (host.events.items) |event| switch (event) {
 -        .dbg => |message| try emitDebugMessage(allocator, options, false, message),
 +        .dbg => |message| try reportLiteralDebugMessage(allocator, owners, options, plan, message),
          .expect_failed => |expect_failure| {
              const failed_at = native.failedAt(expect_failure.point);
              try reportLiteralRootExpectFailure(owners, lowered, plan, expect_failure.message, failed_at.region, failed_at.loc);
-@@ -5707,13 +5736,36 @@ fn reportInterpreterDebugMessages(
+@@ -7682,11 +7713,34 @@ fn reportInterpreterDebugMessages(
  
  fn reportDebugMessage(allocator: Allocator, options: Options, module: checked.ModuleId, root: checked.CompileTimeRoot, message: []const u8) Allocator.Error!void {
      if (options.debug_events) |events| return events.append(module, root, message);
@@ -454,7 +471,7 @@ index ab1669f..f518a4a 100644
 +            .module = target.module.key.digest(),
 +            .root = null,
 +            .source = null,
-+            .region = target.module.checked_bodies.expr(@fromBackingInt(@intCast(plan.site.checked_expr))).source_region,
++            .region = literalSourceRegion(target.module, plan.site.node),
 +            .message = message,
 +        });
 +    }
@@ -462,14 +479,12 @@ index ab1669f..f518a4a 100644
 +}
 +
  fn emitDebugMessage(allocator: Allocator, options: Options, is_repl: bool, message: []const u8) Allocator.Error!void {
-     if (options.debug_events) |events| events.emitted = true;
-     if (options.completion_sink) |sink| try sink.debug(sink.context, message);
      if (options.debug_observer) |observer| try observer.observe(observer.context, message);
 +    if (options.module_event_callback) |callback| callback.notify(callback.context, .{ .dbg = message });
      if (is_repl) {
          if (options.event_callback) |callback| callback.notify(callback.context, .{ .dbg = message });
      }
-@@ -5724,6 +5776,60 @@ fn emitDebugMessage(allocator: Allocator, options: Options, is_repl: bool, messa
+@@ -7697,6 +7751,60 @@ fn emitDebugMessage(allocator: Allocator, options: Options, is_repl: bool, messa
      }
  }
  
@@ -546,10 +561,10 @@ index 41af0c5..39172a5 100644
 +.int8 0
 +#endif
 diff --git a/src/parse/Parser.zig b/src/parse/Parser.zig
-index 762799f..fade792 100644
+index 48beda2..22f965a 100644
 --- a/src/parse/Parser.zig
 +++ b/src/parse/Parser.zig
-@@ -27,6 +27,8 @@ pub const Parser = @This();
+@@ -30,6 +30,8 @@ pub const Parser = @This();
  
  gpa: std.mem.Allocator,
  pos: TokenIdx,
@@ -558,7 +573,7 @@ index 762799f..fade792 100644
  tok_buf: TokenizedBuffer,
  store: NodeStore,
  decl_index: DeclIndex,
-@@ -979,7 +981,10 @@ pub fn runFile(self: *Parser) std.mem.Allocator.Error!void {
+@@ -991,7 +993,10 @@ pub fn runFile(self: *Parser) std.mem.Allocator.Error!void {
      const scratch_top = self.store.scratchTop(AST.Statement);
  
      while (self.peek() != .EndOfFile) {
@@ -571,7 +586,7 @@ index 762799f..fade792 100644
      }
  
 diff --git a/src/parse/mod.zig b/src/parse/mod.zig
-index 8c6d406..3f1a6fa 100644
+index 24e7aa3..f562fc9 100644
 --- a/src/parse/mod.zig
 +++ b/src/parse/mod.zig
 @@ -96,6 +96,36 @@ fn fileRootNode(parser: *Parser) Allocator.Error!u32 {

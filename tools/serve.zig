@@ -25,7 +25,7 @@ fn assetPath(gpa: std.mem.Allocator, target: []const u8) ![]u8 {
     var segments = std.mem.splitScalar(u8, relative, '/');
     while (segments.next()) |segment| if (segment.len == 0 or segment[0] == '.') return error.InvalidPath;
     if (std.mem.eql(u8, relative, "index.html") or std.mem.eql(u8, relative, "install.sh") or std.mem.eql(u8, relative, "install.ps1") or std.mem.eql(u8, relative, "LICENSE") or std.mem.eql(u8, relative, "THIRD_PARTY_NOTICES.md")) return gpa.dupe(u8, relative);
-    for ([_][]const u8{ "demos/", "web/", "compiler-adapter/", "vendor/roclet-display/", "dependencies/", "fixtures/", "tests/", "artifacts/" }) |prefix| {
+    for ([_][]const u8{ "assets/", "demos/", "web/", "compiler-adapter/", "vendor/roclet-display/", "dependencies/", "fixtures/", "tests/", "artifacts/" }) |prefix| {
         if (std.mem.startsWith(u8, relative, prefix)) return gpa.dupe(u8, relative);
     }
     return error.InvalidPath;
@@ -111,7 +111,15 @@ fn serveOne(io: std.Io, context: *Context, stream: std.Io.net.Stream) !void {
     }
     const relative = assetPath(gpa, request.head.target) catch return request.respond("Not found", .{ .status = .not_found, .keep_alive = false });
     const file = try std.fs.path.join(gpa, &.{ context.root, relative });
-    const actual = std.Io.Dir.cwd().realPathFileAlloc(io, file, gpa) catch return request.respond("Not found", .{ .status = .not_found, .keep_alive = false });
+    const cwd = std.Io.Dir.cwd();
+    const actual = cwd.realPathFileAlloc(io, file, gpa) catch found: {
+        // A source checkout serves the generated homepage from the Signals build.
+        if (std.mem.eql(u8, relative, "index.html") or std.mem.startsWith(u8, relative, "assets/")) {
+            const generated = try std.fs.path.join(gpa, &.{ context.root, "site", "dist", relative });
+            if (cwd.realPathFileAlloc(io, generated, gpa)) |path| break :found path else |_| {}
+        }
+        return request.respond("Not found", .{ .status = .not_found, .keep_alive = false });
+    };
     const prefix = try std.mem.concat(gpa, u8, &.{ context.root, std.fs.path.sep_str });
     if (!std.mem.startsWith(u8, actual, prefix)) return request.respond("Not found", .{ .status = .not_found, .keep_alive = false });
     const bytes = std.Io.Dir.cwd().readFileAlloc(io, actual, gpa, .limited(128 * 1024 * 1024)) catch return request.respond("Not found", .{ .status = .not_found, .keep_alive = false });

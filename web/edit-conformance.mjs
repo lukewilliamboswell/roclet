@@ -208,7 +208,7 @@ try {
   report('debug transcripts are bounded and truncation is explicit');
 
   status.textContent = 'Checking Stop during nontermination';
-  recovered.change(s=>{s.cells=[makeCell('code','out_1 = {\n    var $n = 0\n    while True {\n        $n = $n + 1\n    }\n    $n\n}')];});
+  recovered.change(s=>{s.cells=[makeCell('code','out_1 : U64\nout_1 = {\n    var $n = 0\n    while True {\n        $n = $n + 1\n    }\n    $n\n}')];});
   let finished=false; const infinite=recovered.run().finally(()=>{finished=true;});
   await sleep(800); assert(!finished,'The nontermination fixture finished before Stop'); recovered.stop(); await infinite;
   assert.equal(recovered.result,null); assert.equal(recovered.state.autoRun,false);

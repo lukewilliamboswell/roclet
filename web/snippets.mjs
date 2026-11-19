@@ -2,7 +2,7 @@
 export const categories = {all:'All',widgets:'Widgets',charts:'Charts',outputs:'Rich outputs',code:'Code snippets'};
 export const dependencies = {
   roclet:{label:'Display',alias:'roclet',repository:'ageron/roclet-display',pin:'../dependencies/roclet-display-url.txt'},
-  plume:{label:'Plume',alias:'plume',repository:'lukewilliamboswell/plume',version:'0.5.0'},
+  plume:{label:'Plume',alias:'plume',repository:'lukewilliamboswell/plume',version:'0.6.0'},
   random:{label:'Random',alias:'random',repository:'kili-ilo/roc-random',version:'0.9.3'},
 };
 const rich=(kind,content,text='Example output',extra={})=>({version:1,kind,content,text,...extra});

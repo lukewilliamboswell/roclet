@@ -332,7 +332,7 @@ pub fn runEcho(opts: RunOptions) RunEchoError!u8 {
     // by EchoCtx, so the std_io is never actually dereferenced—but the
     // field still must be a concrete value (no `undefined`) to avoid UB if
     // a future refactor adds a real-OS call path.
-    var build_env = BuildEnv.initBorrowingBuiltinModules(allocator, .single_threaded, 1, opts.roc_target, opts.paths.cwd, opts.std_io, try persistentBuiltins());
+    var build_env = BuildEnv.initBorrowingBuiltinModules(allocator, .single_threaded, 1, opts.roc_target, opts.paths.cwd, opts.std_io, try persistentBuiltins(opts.std_io), .lss);
     defer build_env.deinit();
 
     build_env.setSyntheticRootSourceMappingWithLineOffset(
@@ -356,6 +356,7 @@ pub fn runEcho(opts: RunOptions) RunEchoError!u8 {
     const runtime_target: lir.CheckedPipeline.TargetConfig = .{ .target_usize = opts.target_usize };
     if (!opts.check_only) build_env.setRuntimeLowering(.{ .target = runtime_target });
     if (opts.check_only) build_env.setPostCheckPublicationMode(.none);
+    build_env.defer_post_check = true;
 
     build_env.discoverDependencies(opts.paths.app_abs) catch |err| {
         if (!try emitDiagnostics(&build_env, diag, allocator)) {
@@ -371,11 +372,17 @@ pub fn runEcho(opts: RunOptions) RunEchoError!u8 {
         return err;
     };
 
-    // Bail before lowering if canonicalization or type-checking produced
-    // blocking-severity reports (e.g. `module_not_found`, `undefined_variable`).
-    // The CIR contains runtime_error placeholder nodes in that state, and
-    // mono lowering asserts they don't appear as runtime values—proceeding
-    // would trap. The reports themselves are the user-facing output.
+    // User errors can leave unresolved nodes in checked expressions. Publish
+    // those diagnostics before handing an error-free program to lowering.
+    const frontend_failed = build_env.coordinator.?.hasUserErrors();
+    if (frontend_failed) {
+        try build_env.publishFrontendReports();
+    } else build_env.finishCheckedProgram() catch |err| {
+        if (!try emitDiagnostics(&build_env, diag, allocator)) {
+            diag.step("finishCheckedProgram", err);
+        }
+        return err;
+    };
     if (try emitDiagnostics(&build_env, diag, allocator)) {
         return error.CompilationFailed;
     }
@@ -407,7 +414,7 @@ pub fn runEcho(opts: RunOptions) RunEchoError!u8 {
     };
     defer allocator.free(relation_views);
 
-    const lir_roots = lir.CheckedPipeline.selectPlatformEntrypointRoots(allocator, root_artifact.root_requests.runtime_requests) catch |err| {
+    const lir_roots = lir.CheckedPipeline.selectPlatformEntrypointRoots(allocator, root_artifact.root_requests.runtime_requests.items()) catch |err| {
         diag.step("selectPlatformEntrypointRoots", err);
         return err;
     };
@@ -491,11 +498,10 @@ fn runEchoView(
     var static_strings = try eval.LirInterpreter.buildStaticStrings(allocator, &view.store);
     defer static_strings.deinit();
 
-    var interpreter = eval.LirInterpreter.initWithBoxyTables(
+    var interpreter = eval.LirInterpreter.init(
         allocator,
         &view.store,
         &view.layouts,
-        eval.LirInterpreter.BoxyTables.fromImageView(view),
         static_strings.view(),
         &roc_ops,
     ) catch |err| {
@@ -722,8 +728,21 @@ const echo_vtable = Io.VTable{
 };
 
 var builtin_modules: ?eval.BuiltinModules = null;
-pub fn persistentBuiltins() !*eval.BuiltinModules {
-    if (builtin_modules == null) builtin_modules = try eval.BuiltinModules.init(if (@import("builtin").cpu.arch == .wasm32) std.heap.wasm_allocator else std.heap.page_allocator);
+/// In a checked module, associated values resolved through aliases have
+/// already been rewritten to ordinary lookups. A remaining direct reference
+/// can be looked up from the canonical declaration's binding table.
+pub fn associatedLocalTargets(env: *can.ModuleEnv) can.DependencyGraph.AssociatedLocalTargets {
+    return .{ .context = env, .top_level_def = associatedLocalDef };
+}
+
+fn associatedLocalDef(context: *anyopaque, lookup: @FieldType(can.CIR.Expr, "e_lookup_associated_local")) std.mem.Allocator.Error!?can.CIR.Def.Idx {
+    const env: *can.ModuleEnv = @ptrCast(@alignCast(context));
+    const binding = env.lookupMethodBindingForOwnerConst(@fromBackingInt(lookup.type_node_idx), lookup.item_ident) orelse return null;
+    return if (env.store.nodes.get(binding.type_node_idx).tag == .def) binding.def_idx else null;
+}
+
+pub fn persistentBuiltins(io: std.Io) !*eval.BuiltinModules {
+    if (builtin_modules == null) builtin_modules = try eval.BuiltinModules.init(if (@import("builtin").cpu.arch == .wasm32) std.heap.wasm_allocator else std.heap.page_allocator, io);
     return &builtin_modules.?;
 }
 
@@ -816,13 +835,13 @@ pub const DebugCapture = struct {
             var references = collections.DenseMap(can.CIR.Def.Idx, void).init(a);
             var stack: std.ArrayList(can.CIR.Expr.Idx) = .empty;
             var defaults = collections.DenseMap(can.CIR.Expr.Idx, void).init(a);
-            try can.DependencyGraph.collectNameReferences(env, &pattern_defs, expr, &references, &stack, &defaults, a);
+            try can.DependencyGraph.collectNameReferences(env, &pattern_defs, associatedLocalTargets(env), expr, &references, &stack, &defaults, a);
             var refs = references.keyIterator();
             while (refs.next()) |def| try pending.append(a, .{ .env = env, .def = def.*, .expr = env.store.getDef(def.*).expr });
             const region = env.store.getExprRegion(expr);
-            for (env.store.nodes.items.items(.tag), 0..) |tag, i| {
+            for (env.store.nodes.field(.tag), 0..) |tag, i| {
                 if (tag != .expr_external_lookup and tag != .expr_associated_lookup_resolved) continue;
-                const occurrence = env.store.regions.items.items[i];
+                const occurrence = env.store.regions.items()[i];
                 if (occurrence.start.offset < region.start.offset or occurrence.end.offset > region.end.offset) continue;
                 const external = env.store.getExpr(@fromBackingInt(@intCast(i)));
                 const identity = switch (external) {
@@ -899,6 +918,12 @@ pub const RequestStats = struct {
         inline for (@typeInfo(compile.CacheStats).@"struct".field_names) |name| {
             try w.objectField(name);
             try w.write(@field(self.cache, name));
+        }
+        // Current Roc uses the checked cache for inference. Keep the former
+        // counters at zero so existing clients can still read the same shape.
+        inline for (.{ "hits", "misses", "invalidations", "stores", "store_failures", "bytes_read", "bytes_written" }) |field| {
+            try w.objectField("inference_" ++ field);
+            try w.write(@as(u64, 0));
         }
         inline for (.{ "frontend_builds", "lowerings", "executions", "prepared_hits", "image_bytes", "image_retries", "analyses", "demand_union_fallbacks" }) |name| {
             try w.objectField(name);

@@ -6,6 +6,8 @@
   assert(project,'Local server detected');
   assert(!new URL(location.href).searchParams.has('token'),'Login removes the token from the URL');
   assert(!document.cookie.includes(project.config.token),'Session cookie is HttpOnly');
+  await until(()=>document.getElementById('project-heading'),'Signals project notebook list');
+  assert(document.querySelector('[aria-labelledby="project-heading"] a[href$="file=Notebook.roc"]'),'Project notebooks link to their disk files');
   const frame=document.createElement('iframe');frame.style.cssText='width:100%;height:800px';document.body.replaceChildren(frame);
   let win,n,files;
   const load=async(url)=>{

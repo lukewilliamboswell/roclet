@@ -83,9 +83,10 @@ try {
   const customDisplay=await customDisplaySession.request({...evaluate('import Display\nout_1 = Display.({text: "custom"})'),files:[{path:'/workspace/Display.roc',source:'Display := { text : Str }'}]});
   assert.equal(customDisplay.status,'ok');assert(customDisplay.evaluation.values[0].text.includes('custom'));assert.equal(customDisplay.evaluation.values[0].display,undefined);customDisplaySession.stop();
   report('PASS an explicit workspace Display module overrides the default library and remains ordinary inspected text');
-  raw.putFile('/workspace/Fresh.roc',files[0].source);assert.equal(raw(request).status,'ok');
-  const coldStats=raw.cacheStats();
-  const artifacts=raw.takeCacheUpdates();
+  const coldRaw=await createWasmTransport(bytes);
+  coldRaw.putFile('/workspace/Fresh.roc',files[0].source);assert.equal(coldRaw(request).status,'ok');
+  const coldStats=coldRaw.cacheStats();
+  const artifacts=coldRaw.takeCacheUpdates();
   assert(decodeCacheStream(artifacts).length>0,'Compiler must emit real checked/canonicalized cache artifacts');
   report('PASS compiler emits opaque build artifacts, independent of evaluation values');
   const restoredRaw=await createWasmTransport(bytes);assert(restoredRaw.importCache(artifacts));restoredRaw.putFile('/workspace/Fresh.roc',files[0].source);

@@ -17,7 +17,7 @@ try {
   for(const c of hash)digest=digest*58n+BigInt(alphabet.indexOf(c));
   const cache=join(temp,'.cache/roclet/packages');await mkdir(cache,{recursive:true});
   await writeFile(join(cache,digest.toString(16).padStart(64,'0')),await readFile(join(root,'artifacts',hash+'.tar.zst')));
-  server=spawn(join(root,'zig-out/bin/roclet'),['serve',project,'--assets',root,'--port',String(port),'--no-browser'],{env:{...process.env,HOME:temp},stdio:['ignore','ignore','pipe']});
+  server=spawn(join(root,'zig-out/bin/roclet'),['serve',join(project,'Notebook.roc'),'--assets',root,'--port',String(port),'--no-browser'],{env:{...process.env,HOME:temp},stdio:['ignore','ignore','pipe']});
   let startup='';server.stderr.on('data',chunk=>{startup+=chunk;});
   let token;
   const base=`http://127.0.0.1:${port}`;
@@ -27,7 +27,7 @@ try {
     if(server.exitCode!==null)throw new Error('Local server exited');
     await new Promise(r=>setTimeout(r,30));
   }
-  const browser=spawn(process.execPath,[join(root,'tools/browser-check.mjs'),'--page',base+'/?token='+token,'--script',join(root,'tests/local-project-browser.mjs'),'--timeout','90000'],{stdio:'inherit'});
+  const browser=spawn(process.execPath,[join(root,'tools/browser-check.mjs'),'--page',base+'/?token='+token,'--scenario',join(root,'tests/local-project-browser-scenario.mjs'),'--timeout','90000'],{stdio:'inherit'});
   const code=await new Promise((r,reject)=>{browser.once('error',reject);browser.once('exit',r);});
   if(code!==0)throw new Error('Local project browser checks failed');
 } finally {

@@ -113,11 +113,34 @@ fn check(gpa: Allocator, io: std.Io, root: []const u8) !void {
         if (!std.mem.eql(u8, entry.value_ptr.object.get("sha256").?.string, &(try artifactHash(io, file)).sha256)) return error.ArtifactHashMismatch;
     }
 }
+fn buildSite(init: std.process.Init, root: []const u8, compiler: []const u8) !void {
+    const gpa = init.arena.allocator();
+    const roc = try std.Io.Dir.cwd().realPathFileAlloc(init.io, compiler, gpa);
+    const bin = std.fs.path.dirname(roc) orelse return error.ExpectedRocCompilerPath;
+    // The tool starts child builds by looking up `roc` on PATH.
+    const search = if (init.environ_map.get("PATH")) |inherited|
+        try std.fmt.allocPrint(gpa, "{s}{c}{s}", .{ bin, std.fs.path.delimiter, inherited })
+    else
+        bin;
+    try init.environ_map.put("PATH", search);
+    var child = try std.process.spawn(init.io, .{
+        .argv = &.{ roc, "signals.roc", "build" },
+        .cwd = .{ .path = try path(gpa, root, "site") },
+        .environ_map = init.environ_map,
+    });
+    const term = try child.wait(init.io);
+    if (term != .exited or term.exited != 0) return error.SignalsBuildFailed;
+}
+
 pub fn main(init: std.process.Init) !void {
     const gpa = init.arena.allocator();
     const args = try init.minimal.args.toSlice(gpa);
     if (args.len < 3) return error.InvalidArguments;
     const root = args[2];
+    if (std.mem.eql(u8, args[1], "site")) {
+        if (args.len != 4) return error.ExpectedRocCompilerPath;
+        return buildSite(init, root, args[3]);
+    }
     const lock = try std.json.parseFromSliceLeaky(Lock, gpa, try read(gpa, init.io, try path(gpa, root, "compiler.lock.json")), .{});
     if (std.mem.eql(u8, args[1], "assets")) return runtimeAssets(gpa, init.io, root);
     if (std.mem.eql(u8, args[1], "publish")) return publish(gpa, init.io, root, lock, args[3..]);

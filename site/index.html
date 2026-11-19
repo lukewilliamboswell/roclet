@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Write Roc code alongside notes, equations, and images, with all dependent results updating automatically. Run notebooks in your browser or as regular Roc apps, or export them as Markdown documents.">
+<title>Roclet — Reactive notebooks in Roc</title>
+<script>
+(()=>{const system=matchMedia('(prefers-color-scheme: dark)');let preference='system';try{preference=localStorage.getItem('roclet.theme')||'system';}catch{}const apply=()=>document.documentElement.dataset.theme=preference==='dark'||(preference==='system'&&system.matches)?'dark':'light';apply();system.addEventListener('change',apply);addEventListener('storage',e=>{if(e.key==='roclet.theme'||e.key===null){preference=e.newValue||'system';apply();}});})();
+</script>
+<link rel="icon" type="image/svg+xml" href="web/assets/favicon.svg">
+<link rel="stylesheet" href="web/home.css">
+</head>
+<body>
+<div id="app" data-roc-picture></div>
+<p id="home-startup-error" class="quiet" role="status" hidden></p>
+<script type="module">
+  import { mountRocEngineApp } from "./runtime.mjs";
+  import ports from "./web/home-ports.mjs";
+
+  const showError = () => {
+    const message = document.getElementById("home-startup-error");
+    message.textContent = "Roclet could not start. Reload the page to open files or manage recent notebooks.";
+    message.hidden = false;
+  };
+  try {
+    await mountRocEngineApp({
+      wasmUrl: "app.wasm",
+      root: document.getElementById("app"),
+      ports,
+      onFault: showError,
+    });
+  } catch (error) {
+    console.error(error);
+    showError();
+  }
+</script>
+</body>
+</html>

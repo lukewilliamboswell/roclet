@@ -1,6 +1,6 @@
 app [main!] {
     roclet: "https://github.com/ageron/roclet-display/releases/download/0.4.0/Gv78dUSQfYRU2yvV9HuS5oHYdMfik84S4sgsej6mbjLd.tar.zst",
-    parser: "https://github.com/lukewilliamboswell/roc-parser/releases/download/3.0.0/6xsRdRqenJrAb4wG7HaST4Xh349vD5sHAJDsKTK6E3dr.tar.zst",
+    parser: "https://github.com/lukewilliamboswell/roc-parser/releases/download/6.0.0-rc.5/822J9njyNR1vgyX1KG4ck496dBx3AnLfvn2zHXn15Ksw.tar.zst",
 }
 
 import roclet.Display
@@ -46,9 +46,9 @@ Sale : {
 
 decode_sales : Str -> Try(
     List(Sale),
-    [InvalidCsv(CSV.Error), MissingRequiredField(Str)],
+    [InvalidCsv(CSV.Error)],
 )
-decode_sales = |input| CSV.parse(input)
+decode_sales = |input| CSV.decode_str(input, {})
 
 sales = decode_sales(csv_text)
 

@@ -1,8 +1,8 @@
 {
   "protocol": 1,
   "compilerRepository": "https://github.com/roc-lang/roc",
-  "compilerCommit": "f7bef6b38f23797eb34b291ced98af71ea37dd3b",
-  "zigVersion": "0.17.0",
+  "compilerCommit": "63434e9847e74db8ffed7e9244bcb8317771c350",
+  "zigVersion": "0.17.1",
   "nativeOptimize": "ReleaseFast",
   "wasmOptimize": "ReleaseFast"
 }

@@ -147,7 +147,7 @@ pub const State = struct {
         const fs = try a.create(engine.EchoCtx);
         fs.* = .{ .paths = opts.paths, .synthetic_app_source = source.written(), .extras = extras, .fallback = eng.workspace.io(a) };
         const build = try a.create(compile.BuildEnv);
-        build.* = compile.BuildEnv.initBorrowingBuiltinModules(a, .single_threaded, 1, opts.roc_target, opts.paths.cwd, eng.workspace.std_io, try engine.persistentBuiltins());
+        build.* = compile.BuildEnv.initBorrowingBuiltinModules(a, .single_threaded, 1, opts.roc_target, opts.paths.cwd, eng.workspace.std_io, try engine.persistentBuiltins(eng.workspace.std_io), .lss);
         self.build = build;
         build.filesystem = fs.io();
         build.package_cache_dir = try a.dupe(u8, "/packages");
@@ -174,7 +174,7 @@ pub const State = struct {
             return;
         };
         if (build.coordinator.?.hasUserErrors()) {
-            try build.finishCheckedProgram();
+            try build.publishFrontendReports();
             self.reports = try build.drainReports();
             self.failed = true;
             return;
@@ -207,7 +207,7 @@ pub const State = struct {
         // module/package test suites are deliberately never requested.
         for (self.expectations, 0..) |expectation, expectation_index| {
             var found = false;
-            for (artifact.root_requests.requests) |request| {
+            for (artifact.root_requests.requests.items()) |request| {
                 if (request.kind != .test_expect or request.source != .statement) continue;
                 const region = app.env.store.getStatementRegion(request.source.statement);
                 if (region.start.offset < self.prefix) continue;
@@ -307,7 +307,7 @@ pub const State = struct {
         defer static_data.deinit();
         var strings = try eval.LirInterpreter.buildStaticStrings(a, &view.store);
         defer strings.deinit();
-        var interpreter = try eval.LirInterpreter.initWithBoxyTables(a, &view.store, &view.layouts, eval.LirInterpreter.BoxyTables.fromImageView(&view), strings.view(), &ops);
+        var interpreter = try eval.LirInterpreter.init(a, &view.store, &view.layouts, strings.view(), &ops);
         defer interpreter.deinit();
         static_data.install(&interpreter);
         static_data.ownByInterpreter(&interpreter);

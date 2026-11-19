@@ -86,7 +86,10 @@ fn collect(a: A, env: *can.ModuleEnv, tag: can.CIR.Node.Tag, i: usize, patterns:
                 .e_lookup_local => |e| if (patterns.get(e.pattern_idx)) |def| try facts.values.put(a, def, {}),
                 .e_lookup_external => |e| try facts.imports.put(a, e.module_idx, {}),
                 .e_nominal => |e| try facts.types.put(a, e.nominal_type_decl, {}),
-                .e_nominal_external => |e| try facts.imports.put(a, e.module_idx, {}),
+                .e_nominal_external => |e| switch (e.module) {
+                    .import => |idx| try facts.imports.put(a, idx, {}),
+                    .identity => |idx| try facts.identities.put(a, idx, {}),
+                },
                 .e_lookup_associated_local => |e| try facts.types.put(a, @fromBackingInt(e.type_node_idx), {}),
                 .e_lookup_associated => |e| try facts.imports.put(a, e.module_idx, {}),
                 .e_lookup_associated_resolved => |e| if (e.module_identity == env.self_module_identity) {
@@ -122,7 +125,10 @@ fn collect(a: A, env: *can.ModuleEnv, tag: can.CIR.Node.Tag, i: usize, patterns:
         },
         .pattern_nominal, .pattern_nominal_external, .pattern_deferred_import_ref => switch (env.store.getPattern(@fromBackingInt(@intCast(i)))) {
             .nominal => |p| try facts.types.put(a, p.nominal_type_decl, {}),
-            .nominal_external => |p| try facts.imports.put(a, p.module_idx, {}),
+            .nominal_external => |p| switch (p.module) {
+                .import => |idx| try facts.imports.put(a, idx, {}),
+                .identity => |idx| try facts.identities.put(a, idx, {}),
+            },
             .deferred_import_ref => facts.pending = true,
             else => {},
         },
@@ -196,9 +202,9 @@ pub fn analyze(arena: A, env: *can.ModuleEnv, prefix: u32, user_bytes: u32, expe
         try can.DependencyGraph.appendPatternBinders(env, env.store.getDef(idx).pattern, &binders, &binder_stack, arena);
         for (binders.items) |binder| try patterns.put(binder, idx);
     }
-    const tags = env.store.nodes.items.items(.tag);
+    const tags = env.store.nodes.field(.tag);
     for (tags, 0..) |tag, i| {
-        const r = env.store.regions.items.items[i];
+        const r = env.store.regions.items()[i];
         if (r.start.offset < prefix or r.end.offset > user_end) continue;
         switch (tag) {
             .pattern_identifier, .pattern_var_identifier, .pattern_as => {
@@ -287,7 +293,7 @@ pub fn analyze(arena: A, env: *can.ModuleEnv, prefix: u32, user_bytes: u32, expe
     const facts = try arena.alloc(Facts, nodes.items.len);
     @memset(facts, .{});
     for (tags, 0..) |tag, i| {
-        const r = env.store.regions.items.items[i];
+        const r = env.store.regions.items()[i];
         if (r.start.offset < prefix or r.end.offset > user_end) continue;
         if (ownerOf(owners.items, r.start.offset, r.end.offset)) |slot| try collect(arena, env, tag, i, &patterns, &facts[slot]);
     }
@@ -341,7 +347,7 @@ pub fn analyze(arena: A, env: *can.ModuleEnv, prefix: u32, user_bytes: u32, expe
     var united: std.AutoHashMapUnmanaged(CIR.Def.Idx, std.ArrayList(CIR.Def.Idx)) = .empty;
     for (node_defs.keys(), node_defs.values()) |idx, slot| {
         refs.clearRetainingCapacity();
-        try can.DependencyGraph.collectNameReferences(env, &patterns, env.store.getDef(idx).expr, &refs, &stack, &defaults, arena);
+        try can.DependencyGraph.collectNameReferences(env, &patterns, engine.associatedLocalTargets(env), env.store.getDef(idx).expr, &refs, &stack, &defaults, arena);
         if (demand.get(idx)) |dependencies| for (dependencies.items) |dependency| try refs.put(dependency, {});
         var edges: std.ArrayList(CIR.Def.Idx) = .empty;
         var it = refs.keyIterator();
@@ -373,7 +379,7 @@ pub fn analyze(arena: A, env: *can.ModuleEnv, prefix: u32, user_bytes: u32, expe
         if (name_region.start.offset < prefix or expr_region.end.offset > user_end) continue;
         const name = env.getIdent(pattern.assign.ident);
         refs.clearRetainingCapacity();
-        try can.DependencyGraph.collectNameReferences(env, &patterns, def.expr, &refs, &stack, &defaults, arena);
+        try can.DependencyGraph.collectNameReferences(env, &patterns, engine.associatedLocalTargets(env), def.expr, &refs, &stack, &defaults, arena);
         var deps: std.ArrayList([]const u8) = .empty;
         // Source order is deterministic; references include uncalled lambda bodies.
         for (defs) |other| if (refs.contains(other)) {
@@ -421,7 +427,7 @@ pub fn analyze(arena: A, env: *can.ModuleEnv, prefix: u32, user_bytes: u32, expe
             const region = env.store.getStatementRegion(idx);
             if (region.start.offset < prefix or region.start.offset - prefix < expectation.start or region.start.offset - prefix >= expectation.end) continue;
             refs.clearRetainingCapacity();
-            try can.DependencyGraph.collectNameReferences(env, &patterns, statement.s_expect.body, &refs, &stack, &defaults, arena);
+            try can.DependencyGraph.collectNameReferences(env, &patterns, engine.associatedLocalTargets(env), statement.s_expect.body, &refs, &stack, &defaults, arena);
             var deps: std.ArrayList([]const u8) = .empty;
             for (defs) |other| if (refs.contains(other)) {
                 const pattern = env.store.getPattern(env.store.getDef(other).pattern);

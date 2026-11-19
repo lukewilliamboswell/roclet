@@ -124,7 +124,7 @@ with a small notebook that reproduces it, your browser version, and what you exp
 
 ## Build it yourself
 
-You'll need Zig 0.17.0, Git, tar, and a checkout of the Roc compiler. There is no
+You'll need Zig 0.17.1, Git, tar, and a checkout of the Roc compiler. There is no
 Node.js or npm requirement.
 
 ```sh
@@ -134,6 +134,7 @@ zig build serve
 ```
 
 Open <http://127.0.0.1:4173/web/edit.html>.
+The homepage is built with roc-signals 0.7.0-rc1. Use `zig build site` to rebuild it independently.
 The [installation guide](docs/installation.md) covers the compiler checkout,
 offline use, downloads, and sharing. The [design](design.md) describes where
 Roclet is heading.

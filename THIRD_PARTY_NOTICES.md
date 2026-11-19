@@ -3,6 +3,7 @@
 Roclet is licensed under UPL-1.0; see LICENSE. Dependencies retain their licenses:
 
 - **Roc compiler** — UPL-1.0. See `compiler-adapter/ROC-LICENSE` and the pinned revision in `compiler.lock.json`.
+- **Roc Signals 0.7.0-rc1** — UPL-1.0. See `site/LICENSE` in source or the license beside the hashed Signals runtime in the site distribution.
 - **MD4C** — MIT. See `vendor/md4c/LICENSE.md` in source, or `web/vendor/md4c.LICENSE.md` in the browser distribution.
 - **CodeMirror, Lezer, and editor dependencies** — MIT. Individual notices and the package list are in `web/vendor/editor/`.
 - **KaTeX and its bundled fonts** — MIT. See `web/vendor/katex/LICENSE`; provenance is recorded in its lock file. Exported math styles include the notice.

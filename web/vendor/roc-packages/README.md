@@ -19,16 +19,16 @@ services requiring filesystem, network, or operating-system effects.
 | [roc-ascii](https://github.com/ageron/roc-ascii) | v0.5.1 | User-selected compatible fork; ASCII text processing |
 | [roc-isodate](https://github.com/ageron/roc-isodate) | v0.8.4 | ISO 8601 dates, times, durations and date arithmetic |
 | [Roclet Display](https://github.com/ageron/roclet-display) | 0.4.0 | All rich-output demos; also embedded in the notebook runtime |
-| [Plume](https://github.com/lukewilliamboswell/plume) | 0.5.0 | Interactive chart demo |
-| [roc-parser](https://github.com/lukewilliamboswell/roc-parser) | 2.0.0, 3.0.0, 4.0.0 | Official parser example, CSV demo, and current release; CSV, JSON, Markdown, YAML, XML and other text parsing |
+| [Plume](https://github.com/lukewilliamboswell/plume) | 0.5.0, 0.6.0 | Interactive chart demo |
+| [roc-parser](https://github.com/lukewilliamboswell/roc-parser) | 2.0.0, 3.0.0, 4.0.0, 6.0.0-rc.5 | Official parser example, CSV demo, and current release; CSV, JSON, Markdown, YAML, XML and other text parsing |
 | [roc-time](https://github.com/lukewilliamboswell/roc-time) | 0.2.0, 0.3.2 | Meeting scheduler demo and current release; date and time calculations |
-| [Unicode](https://github.com/roc-lang/unicode) | 4.2.0, 4.3.0, 4.3.1 | Official examples, parser's transitive dependencies, and current release |
+| [Unicode](https://github.com/roc-lang/unicode) | 4.2.0, 4.3.0, 4.3.1, 4.3.3 | Official examples, parser's transitive dependencies, and current release |
 | [roc-random](https://github.com/kili-ilo/roc-random) | 0.9.2, 0.9.3 | Official example and current release; reproducible simulations |
 | [path](https://github.com/roc-lang/path) | 4.0.0 | Official example; pure path manipulation |
 | [roc-base64](https://github.com/niclas-ahden/roc-base64) | 1.0.2 | Byte and text conversions for attached data |
 | [roc-graph-layout](https://github.com/lukewilliamboswell/roc-graph-layout) | 0.2.0 | Pure layout algorithms for graph visualization |
 
-The collection contains 17 pinned archives (2,196,166 compressed bytes). Exact sizes, SHA-256
+The collection contains 20 pinned archives (3,110,401 compressed bytes). Exact sizes, SHA-256
 checksums, upstream release URLs, transitive dependencies, and license filenames
 are recorded in `manifest.json`. Licenses are retained separately because some
 release bundles contain only Roc source. Each license comes from its release tag.
@@ -49,6 +49,8 @@ can also be started manually. It compares each mirrored repository's latest
 stable release with the existing pins and publishes a review report in the run
 summary and artifact. It never changes imports or installs new archives. Run
 `python3 tools/check-mirror-releases.py` for the same read-only report locally.
+Older Unicode archives remain available at their original URLs. Direct Scalar imports need Unicode 4.3.3 with the current compiler's iterator API.
+
 The 0.3.2 roc-time release was added after this check while the meeting demo
 continues to use 0.2.0.
 

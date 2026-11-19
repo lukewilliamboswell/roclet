@@ -31,6 +31,15 @@
   assert(!document.querySelector('#recent-status').hidden,'Empty-state message must be visible');
   assert(document.activeElement===document.querySelector('#open-notebook'),'Removing the last entry must retain keyboard focus');
   await store.removeFromRecents('missing');
+  for (let i=0;i<8;i++) await store.save(newDraft('Saved notebook '+i));
+  refresh();
+  await until(()=>document.querySelectorAll('#recents li').length===6);
+  const more=document.querySelector('#show-all');
+  assert(more.textContent==='Show all 8 notebooks','Show all announces the full count');
+  more.click();
+  await until(()=>document.querySelectorAll('#recents li').length===8);
+  more.click();
+  await until(()=>document.querySelectorAll('#recents li').length===6);
   store.close();editor.close();reopened.close();
   return {result:'pass',verified:'home removal, empty state, focus, draft preservation, persistence, and concurrent autosave'};
 })()

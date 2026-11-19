@@ -8,7 +8,7 @@ Your changes stay in your browser; they don't modify the published example.
 | [A result before its ingredients](01-reactivity.roc) | Change the number of guests, then move the cells around. | [Open demo](https://ageron.github.io/roclet/web/edit.html?example=reactivity) |
 | [Coding puzzle: longest streak](02-coding-puzzle.roc) | Implement the stub and make every check pass; hints are included, but no solution. | [Open demo](https://ageron.github.io/roclet/web/edit.html?example=coding-puzzle) |
 | [Rich Outputs and Widgets](03-rich-outputs.roc) | Explore Markdown, tables, images, and interactive widgets. | [Open demo](https://ageron.github.io/roclet/web/edit.html?example=rich-outputs) |
-| [Plot a wave with Plume](04-plume-charts.roc) | Plot a sine wave, adjust its frequency with a slider, and hover or zoom. Uses Plume 0.5.0; load its release bundle when prompted on first use. | [Open demo](https://ageron.github.io/roclet/web/edit.html?example=plume-charts) |
+| [Plot a wave with Plume](04-plume-charts.roc) | Plot a sine wave, adjust its frequency with a slider, and hover or zoom. Uses Plume 0.6.0; load its release bundle when prompted on first use. | [Open demo](https://ageron.github.io/roclet/web/edit.html?example=plume-charts) |
 | [A café sales report from CSV](05-csv-attachments.roc) | Decode typed rows with roc-parser and calculate revenue in exact cents. | [Open demo](https://ageron.github.io/roclet/web/edit.html?example=csv-attachments) |
 | [Finding room for a design review](06-meeting-windows.roc) | Follow a calendar analysis: normalize offsets, merge overlaps, find gaps, and recommend a 45-minute meeting. Uses roc-time 0.2.0; download and load its bundle when prompted on first use. | [Open demo](https://ageron.github.io/roclet/web/edit.html?example=meeting-windows) |
 | [A garden plan from a Gist](https://gist.github.com/lukewilliamboswell/ab17cb796239be901ec0436f919d39bb) | Keep the notebook small: use a relative Roc package, a private supporting module, and a text attachment from one Gist. Requires internet. | [Open demo](https://ageron.github.io/roclet/web/edit.html?example=gist-garden) |
@@ -27,7 +27,7 @@ For Markdown, tables, HTML, images, and interactive widgets,
 [open the Rich Outputs and Widgets demo](https://ageron.github.io/roclet/web/edit.html?example=rich-outputs).
 
 The [CSV attachments demo](05-csv-attachments.roc) decodes typed rows with
-roc-parser 3.0.0 and calculates revenue in exact cents.
+roc-parser 6.0.0-rc.5 and calculates revenue in exact cents.
 [Open demo](https://ageron.github.io/roclet/web/edit.html?example=csv-attachments)
 to get the notebook and its [sample data](data/cafe-sales.csv) together, then use
 **File → Attachments** to replace the CSV.

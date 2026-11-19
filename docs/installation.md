@@ -217,7 +217,7 @@ for public-domain and private-network setup, including certificate trust.
 
 ## Build from source
 
-Install **Zig 0.17.0**, Git, and tar. Clone this Roclet repository, then obtain a
+Install **Zig 0.17.1**, Git, and tar. Clone this Roclet repository, then obtain a
 Roc compiler checkout:
 
 ```sh
@@ -240,6 +240,11 @@ Open <http://127.0.0.1:4173/web/edit.html>. To choose another port:
 ```sh
 zig build serve -- 4174
 ```
+
+The build uses the pinned compiler to build and prerender the Signals homepage
+from `site/`. Run `zig build site` to rebuild the homepage into `site/dist/`.
+The Roclet server serves this output alongside the editor and its assets.
+`zig build package` assembles both into the Pages and offline distributions.
 
 After the first build, `zig build` reuses Zig's build cache. Repeat the preparation
 command when the compiler pin or embedding API patch changes. The default compiler

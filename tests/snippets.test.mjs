@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {snippets,prepareSnippet} from '../web/snippets.mjs';
 import {normalizeDisplay} from '../web/display-view.mjs';
-const urls={roclet:'https://github.com/ageron/roclet-display/releases/download/0.4.0/pinned.tar.zst',plume:'https://github.com/lukewilliamboswell/plume/releases/download/0.5.0/pinned.tar.zst',random:'https://github.com/kili-ilo/roc-random/releases/download/0.9.3/pinned.tar.zst'};
+const urls={roclet:'https://github.com/ageron/roclet-display/releases/download/0.4.0/pinned.tar.zst',plume:'https://github.com/lukewilliamboswell/plume/releases/download/0.6.0/pinned.tar.zst',random:'https://github.com/kili-ilo/roc-random/releases/download/0.9.3/pinned.tar.zst'};
 const snippet=id=>snippets.find(s=>s.id===id);
 const state=(preamble='app [main!] {}',source='')=>({preamble,cells:[{kind:'code',source}],inputValues:{}});
 test('every rich preview satisfies the output renderer contract',()=>{

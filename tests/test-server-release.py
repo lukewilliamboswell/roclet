@@ -44,6 +44,15 @@ def check(archive):
                     request = urllib.request.Request(f'http://127.0.0.1:{port}/{path}', headers=headers)
                     with urllib.request.urlopen(request, timeout=10) as response:
                         assert response.read() == (root / path).read_bytes(), path
+                landing = (root / 'index.html').read_text(encoding='utf-8')
+                assert 'data-roc-frame' in landing
+                wasm = re.search(r'assets/([a-f0-9]{16})/app\.wasm\?roc-build=([a-f0-9]{16})', landing)
+                assert wasm and wasm[1] == wasm[2]
+                for name in ('app.wasm', 'environment.mjs', 'runtime.mjs', 'startup.mjs', 'worker.mjs', 'LICENSE'):
+                    path = f'assets/{wasm[1]}/{name}'
+                    request = urllib.request.Request(f'http://127.0.0.1:{port}/{path}', headers=headers)
+                    with urllib.request.urlopen(request, timeout=10) as response:
+                        assert response.read() == (root / path).read_bytes(), path
                 print('Extracted server release serves all required assets.')
             finally:
                 process.terminate()

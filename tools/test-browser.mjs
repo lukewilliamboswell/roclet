@@ -13,6 +13,7 @@ const suites=[
   ['Notebook lifecycle','edit-conformance'],
   ['Home recent notebooks','../index','browser-recents-probe.mjs'],
   ['Home recent notebooks, mobile','../index','browser-recents-probe.mjs','390x960'],
+  ['Homepage and file picker under a Pages prefix','../index','browser-home-scenario.mjs',null,30000,'/roclet/'],
   ['Notebook startup','startup-conformance'],
   ['Desktop notebook UI','edit-ui-conformance'],
   ['Compact notebook UI','edit-ui-conformance',null,'390x960'],
@@ -42,11 +43,12 @@ const suites=[
 ];
 // Each worker owns a complete driver process, including Chrome/profile/server.
 // Buffer its log so parallel suites still produce readable GitHub log groups.
-function runSuite([label,page,script,viewport,timeout=180000]) {
+function runSuite([label,page,script,viewport,timeout=180000,sitePrefix]) {
   const [name,query]=page.split('?');
   const args=[driver,'--page',`web/${name}.html${query===undefined?'':'?'+query}`,'--timeout',String(timeout)];
   if(script)args.push(script.endsWith('-scenario.mjs')?'--scenario':'--script',fileURLToPath(new URL(script,import.meta.url)));
   if(viewport)args.push('--viewport',viewport);
+  if(sitePrefix)args.push('--site-prefix',sitePrefix);
   return new Promise(resolve=>{
     const child=spawn(process.execPath,args,{stdio:['ignore','pipe','pipe']});
     const chunks=[];

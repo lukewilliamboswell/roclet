@@ -11,6 +11,7 @@ const root=resolve(import.meta.dirname,'..'),page=option('--page','web/workspace
 const timeout=Number(option('--timeout','120000')),startupTimeout=Number(option('--startup-timeout','60000')),profile=await mkdtemp(resolve(tmpdir(),'roclet-browser-'));
 const networkLog=option('--network-log',null),requests=new Map(),networkFailures=[];
 const packageEndpoint=option('--package-endpoint',null);
+const sitePrefix=option('--site-prefix','/');
 const withoutPackageMirror=args.includes('--without-package-mirror');
 const uploadPlanFile=option('--upload-plan',null),uploads=uploadPlanFile?JSON.parse(await readFile(uploadPlanFile,'utf8')):[];
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -23,14 +24,18 @@ const server=createServer(async(req,res)=>{
     if(packageEndpoint && new URL(req.url,'http://localhost').pathname==='/web/package-config.json') {
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({endpoint:packageEndpoint==='none'?null:packageEndpoint}));return;
     }
-    const pathname=new URL(req.url,'http://localhost').pathname;
-    const path=resolve(root,pathname==='/'?'index.html':'.'+decodeURIComponent(pathname));
+    const requested=new URL(req.url,'http://localhost').pathname;
+    if(!requested.startsWith(sitePrefix)) {res.writeHead(404);res.end();return;}
+    const pathname='/'+requested.slice(sitePrefix.length);
+    const relative=decodeURIComponent(pathname==='/'?'/index.html':pathname);
+    const signals=relative==='/index.html'||relative.startsWith('/assets/');
+    const path=resolve(root,signals?'site/dist':'','.'+relative);
     if(!path.startsWith(root+sep)) {res.writeHead(403);res.end();return;}
     const bytes=await readFile(path);res.writeHead(200,{'Content-Type':types[extname(path)]??'application/octet-stream','Cache-Control':'no-store'});res.end(bytes);
   } catch {res.writeHead(404);res.end();}
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-const base=option('--base-url',`http://127.0.0.1:${server.address().port}`);
+const base=option('--base-url',`http://127.0.0.1:${server.address().port}${sitePrefix}`);
 const chrome=spawn(option('--chrome',process.env.CHROME_PATH??'google-chrome'),['--headless=new','--no-sandbox','--disable-gpu','--no-first-run','--no-default-browser-check','--disable-dev-shm-usage','--remote-debugging-port=0',`--user-data-dir=${profile}`,'about:blank'],{stdio:['ignore','ignore','pipe']});
 let startupError;chrome.on('error',error=>{startupError=error;});
 let stderr='';chrome.stderr.on('data',chunk=>{stderr+=chunk;});
@@ -76,13 +81,13 @@ try {
   await send('Page.enable');await send('Runtime.enable');
   if(uploadPlanFile) {await send('Page.setInterceptFileChooserDialog',{enabled:true});await send('Runtime.addBinding',{name:'__rocletFilePicker'});}
   if(networkLog)await send('Network.enable');
-  // Native focus events are required by editor and iframe UI contracts.
-  // Headless Chrome otherwise changes activeElement in a background document
-  // without dispatching those events.
+  // Focus emulation keeps the conformance iframe active in headless Chrome.
+  // Otherwise programmatic focus can change activeElement without focus events.
   await send('Page.bringToFront');
+  await send('Emulation.setFocusEmulationEnabled',{enabled:true});
   const [width,height]=option('--viewport','1280x960').split('x').map(Number);
   await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<680});
-  const navigation=await send('Page.navigate',{url:new URL(page,base+'/').href});
+  const navigation=await send('Page.navigate',{url:new URL(page,base.endsWith('/')?base:base+'/').href});
   if(navigation.errorText)throw new Error(`Browser navigation failed: ${navigation.errorText}`);
   await sleep(250);
   const scenario=option('--scenario',null);

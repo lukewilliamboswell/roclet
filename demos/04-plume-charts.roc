@@ -1,6 +1,6 @@
 app [main!] {
     roclet: "https://github.com/ageron/roclet-display/releases/download/0.4.0/Gv78dUSQfYRU2yvV9HuS5oHYdMfik84S4sgsej6mbjLd.tar.zst",
-    plume: "https://github.com/lukewilliamboswell/plume/releases/download/0.5.0/UstpTQVssohnU8U6Q5WpwfGxKuYZF8uWzjddwKMbTcp.tar.zst",
+    plume: "https://github.com/lukewilliamboswell/plume/releases/download/0.6.0/CQJyEgus7V9Wsoh8JHi5mbHXubm7woVbqFhCYLrd8sch.tar.zst",
 }
 
 import roclet.Display
@@ -17,7 +17,7 @@ import plume.Title
 # Frequency is measured in radians per x-unit; the amplitude stays at 1.
 # Hover for coordinates, drag to zoom, and double-click to reset the axes.
 #
-# This notebook uses Plume 0.5.0. Load its release bundle when prompted on first
+# This notebook uses Plume 0.6.0. Load its release bundle when prompted on first
 # use. Roclet keeps the package for offline use and includes the Plotly renderer.
 
 # %%
@@ -29,11 +29,12 @@ out_frequency = frequency_control.display
 
 # %%
 draw_wave = |angular_frequency| {
+    points : List(Scatter.Point)
     points = List.from_iter((0.U64..<81).iter()).map_try(|step| {
         number = step.to_f64() / 10
         x = Coordinate.from_number(number)?
         y = Coordinate.from_number(F64.sin(angular_frequency * number))?
-        Ok({ x, y })
+        Ok(Scatter.Point.{ x, y })
     })?
     curve = Scatter.new({ data: points, mode: Lines, name: "Sine wave" })
     chart = Chart.new({
